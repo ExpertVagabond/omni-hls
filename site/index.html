@@ -44,6 +44,20 @@
   <h2>The playlist</h2>
   <pre id="m3u8">fetching hls/stream.m3u8</pre>
 
+  <h2>Same bytes, DASH manifest</h2>
+  <p class="lead"><code>dash.py</code> wrote <a href="hls/stream.mpd">stream.mpd</a> into the same directory. It names the same <code>init.mp4</code> and part files; only the manifest differs. Played here by dash.js.</p>
+
+  <video id="d" controls muted playsinline></video>
+
+  <dl>
+    <dt>engine</dt><dd id="d-engine">loading</dd>
+    <dt>manifest</dt><dd id="d-manifest">not loaded</dd>
+    <dt>codecs</dt><dd id="d-codecs">unknown</dd>
+    <dt>buffered</dt><dd id="d-buffered">0.00 s</dd>
+    <dt>errors</dt><dd id="d-errors" class="ok">none</dd>
+  </dl>
+  <pre id="mpd">fetching hls/stream.mpd</pre>
+
   <h2>Bench on the runner that built this page</h2>
   <p class="lead">Ubuntu, GitHub Actions, produced by the same CI run that deployed this page. Full write-up and method in the <a href="https://github.com/ExpertVagabond/omni-hls">repository README</a>.</p>
   <div id="bench"></div>
@@ -51,6 +65,9 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.6.7/hls.min.js"
         integrity="sha384-rx4PlVDgFc9l++UMmNXDKltJFepbmAvkxzm6aozq6qvKO5zVtGexTR4aYSf/gtez"
+        crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dashjs/4.7.4/dash.all.min.js"
+        integrity="sha384-fl7i8WZxcPlF9b1503+Gm+izr/2hpilydj0i/DlQTIafROZ1NP4rAWjyl6p3s1ev"
         crossorigin="anonymous"></script>
 <script>
 (function () {
@@ -93,6 +110,34 @@
 
   fetch(SRC).then(function (r) { return r.text(); }).then(function (t) { $("m3u8").textContent = t; })
     .catch(function (e) { $("m3u8").textContent = "could not fetch playlist: " + e; });
+
+  // DASH: same media files, second manifest, second player.
+  var MPD = "hls/stream.mpd";
+  var dv = document.getElementById("d");
+  function dfail(msg) { var e = $("d-errors"); e.textContent = msg; e.className = "bad"; }
+  function dshow() {
+    var b = dv.buffered, end = 0;
+    for (var i = 0; i < b.length; i++) end = Math.max(end, b.end(i));
+    $("d-buffered").textContent = end.toFixed(2) + " s";
+  }
+  dv.addEventListener("progress", dshow);
+  dv.addEventListener("timeupdate", dshow);
+  fetch(MPD).then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); }).then(function (t) {
+    $("mpd").textContent = t;
+    var m = /codecs="([^"]+)"/.exec(t); if (m) $("d-codecs").textContent = m[1];
+  }).catch(function (e) { $("mpd").textContent = "could not fetch manifest: " + e; });
+  if (window.dashjs && dashjs.MediaPlayer) {
+    var player = dashjs.MediaPlayer().create();
+    $("d-engine").textContent = "dash.js " + player.getVersion();
+    player.on(dashjs.MediaPlayer.events.MANIFEST_LOADED, function (e) {
+      var mpd = e.data; $("d-manifest").textContent = "loaded, type=" + (mpd && mpd.type) + ", " + (mpd && mpd.Period_asArray ? mpd.Period_asArray.length : "?") + " period";
+    });
+    player.on(dashjs.MediaPlayer.events.ERROR, function (e) { dfail((e.error && (e.error.message || e.error.code)) || "error"); });
+    player.updateSettings({ streaming: { buffer: { fastSwitchEnabled: false } } });
+    player.initialize(dv, MPD, false);
+  } else {
+    $("d-engine").textContent = "dash.js did not load";
+  }
 
   function table(md) {
     var rows = md.trim().split("\n").filter(function (l) { return l.indexOf("|") === 0 && !/^\|-+/.test(l); });

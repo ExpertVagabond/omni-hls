@@ -41,6 +41,8 @@ That is what `llhls.py` does, and `bench.py` measures what it costs.
 | `hls_client.py` | Connects to a live vLLM-Omni server and drives the two above. Derives part duration from the first `video.chunk_metadata` rather than assuming a constant. |
 | `test_hls_packaging.py` | 10 tests. No GPU, no server, no ffmpeg. Asserts framing independence from whole-buffer down to one byte at a time, and that the playlist references only files that exist. |
 | `bench.py` | The benchmark. Paces a fragment stream at a chosen real-time factor through the splitter and packager, reports publish latency and live-edge lead, then decodes the playlist with ffmpeg to prove it is valid. |
+| `dash.py` | MPEG-DASH packager over the same fragments. Writes an MPD (`dynamic` while live, `static` on finish) whose `SegmentList` names exactly the files on disk, reads `@codecs`, width and height from the init segment's `avcC`, and can share one directory with the LL-HLS output so the same bytes serve both players. |
+| `test_dash.py` | 9 tests. Codec probe on a structurally real `moov`, manifest lists exactly the written files, dynamic-to-static transition, share mode writes no media, media bytes identical to what `llhls.py` writes. |
 
 ## Method
 
@@ -132,6 +134,22 @@ At pace 0.9 it drains 62 ms per part and goes negative on the eleventh, so a 6 s
 stalls on its last part and a 10 s clip stalls at about part 9. The gap between
 "faster than playback" and a rebuffer is a 10% swing in generation speed.
 
+## DASH from the same bytes
+
+The issue said DASH would be a small addition on the same splitter. It is: `dash.py`
+is 200 lines and writes no media of its own when pointed at the LL-HLS directory.
+
+```bash
+python3 dash.py --source out/source.fmp4 --out out/hls --share
+```
+
+produces `out/hls/stream.mpd` next to `stream.m3u8`, both referencing the same
+`init.mp4` and `partNNNNN.m4s` files. The MPD carries `codecs="avc1.42C016"` read
+from the init segment, which ffprobe confirms as Constrained Baseline level 2.2.
+CI decodes the MPD with ffmpeg on every push. macOS Homebrew ffmpeg lacks
+libxml2 and cannot demux an MPD, so the local check is to decode the segments the
+manifest lists; the test suite checks that list against the directory.
+
 ## What this does not show
 
 - **Not a live server.** The source is ffmpeg `testsrc2` encoded with x264 into the
@@ -154,7 +172,7 @@ stalls on its last part and a 10 s clip stalls at about part 9. The gap between
 ## Reproduce
 
 ```bash
-python3 -m pytest -q test_hls_packaging.py          # 10 tests, no ffmpeg needed
+python3 -m pytest -q                               # 19 tests, no ffmpeg needed
 python3 bench.py --runs 5 --markdown                # synthesises the source, needs ffmpeg
 python3 bench.py --slice 17 --runs 5 --markdown
 python3 bench.py --pace 1.0 --markdown
