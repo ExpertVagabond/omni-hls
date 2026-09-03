@@ -14,6 +14,9 @@ It is the standalone home of the code in
 the benchmark harness that produced the numbers below. The four packaging files are
 mirrored verbatim from the PR so the two stay diffable.
 
+**Demo:** https://expertvagabond.github.io/omni-hls/ plays the playlist the CI bench
+wrote, in hls.js or native HLS, with the runner's own bench tables under it.
+
 ## The gap
 
 `WS /v1/realtime/video` already emits fragmented MP4, one fragment per generated

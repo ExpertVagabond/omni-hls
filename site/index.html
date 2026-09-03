@@ -61,12 +61,14 @@
 
   function fail(msg) { var e = $("errors"); e.textContent = msg; e.className = "bad"; }
 
-  video.addEventListener("timeupdate", function () {
+  function showBuffer() {
     $("pos").textContent = video.currentTime.toFixed(2) + " s";
     var b = video.buffered, end = 0;
     for (var i = 0; i < b.length; i++) end = Math.max(end, b.end(i));
     $("buffered").textContent = end.toFixed(2) + " s";
-  });
+  }
+  video.addEventListener("timeupdate", showBuffer);
+  video.addEventListener("progress", showBuffer);
   video.addEventListener("error", function () { fail("video element error " + (video.error && video.error.code)); });
 
   if (window.Hls && Hls.isSupported()) {
