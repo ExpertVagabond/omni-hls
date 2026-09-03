@@ -1,4 +1,6 @@
 out/
+site/hls/
+site/bench/
 __pycache__/
 *.pyc
 .pytest_cache/
