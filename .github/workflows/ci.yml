@@ -33,6 +33,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: mkdir -p out
       - name: Bench at the posted pace, 8192-byte slices, 5 runs
         run: |
           python bench.py --runs 5 --markdown --json out/bench-posted.json | tee out/bench-posted.md
