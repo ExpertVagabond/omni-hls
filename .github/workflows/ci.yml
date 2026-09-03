@@ -40,8 +40,10 @@ jobs:
       - name: DASH manifest over the same media, then decode it
         run: |
           python dash.py --source out/source.fmp4 --out out/hls --share
-          ffmpeg -loglevel error -i out/hls/stream.mpd -f null -
-          ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0 out/hls/stream.mpd
+          # ffmpeg's dash demuxer resolves SegmentURL relative to the working
+          # directory for local files, so decode from inside the output dir.
+          (cd out/hls && ffmpeg -loglevel error -i stream.mpd -f null -)
+          (cd out/hls && ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0 stream.mpd)
           cp -r out/hls site/hls
       - name: Bench at the posted pace, 17-byte slices, 5 runs
         run: |
