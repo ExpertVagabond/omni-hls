@@ -43,7 +43,15 @@ jobs:
           # ffmpeg's dash demuxer resolves SegmentURL relative to the working
           # directory for local files, so decode from inside the output dir.
           (cd out/hls && ffmpeg -loglevel error -i stream.mpd -f null -)
-          (cd out/hls && ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0 stream.mpd)
+          # A clean exit is not enough: ffmpeg 6 once decoded 2 of 11 segments
+          # without complaint. The MPD and the playlist must yield the same
+          # frame count, since they name the same media.
+          cd out/hls
+          MPD=$(ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0 stream.mpd | head -1)
+          HLS=$(ffprobe -v error -allowed_extensions ALL -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0 stream.m3u8 | head -1)
+          echo "frames via MPD=$MPD via m3u8=$HLS"
+          test -n "$MPD" && test "$MPD" = "$HLS"
+          cd ../..
           cp -r out/hls site/hls
       - name: Bench at the posted pace, 17-byte slices, 5 runs
         run: |
