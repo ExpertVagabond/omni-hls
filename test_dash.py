@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from dash import DASHPackager, probe_init_segment  # noqa: E402
+from dash import DASHPackager, media_name, probe_init_segment  # noqa: E402
 from fmp4 import FragmentedMP4Splitter  # noqa: E402
 
 NS = {"m": "urn:mpeg:dash:schema:mpd:2011"}
@@ -75,15 +75,22 @@ def test_manifest_lists_exactly_the_files_written(tmp_path: Path):
     assert rep is not None and rep.get("codecs") == "avc1.42C01E"
     assert (rep.get("width"), rep.get("height")) == ("640", "384")
 
-    seglist = root.find(".//m:SegmentList", NS)
-    assert seglist is not None
-    assert int(seglist.get("duration")) == round(9 / 16 * int(seglist.get("timescale")))
-    init = seglist.find("m:Initialization", NS)
-    assert init is not None and (tmp_path / init.get("sourceURL")).exists()
-    urls = [s.get("media") for s in seglist.findall("m:SegmentURL", NS)]
+    tmpl = root.find(".//m:SegmentTemplate", NS)
+    assert tmpl is not None
+    assert tmpl.get("duration") is None, "timeline and @duration are mutually exclusive"
+    assert (tmp_path / tmpl.get("initialization")).exists()
+    assert tmpl.get("media") == "part$Number%05d$.m4s"
+    start = int(tmpl.get("startNumber"))
+    s_entries = tmpl.findall("m:SegmentTimeline/m:S", NS)
+    assert len(s_entries) == 1
+    s = s_entries[0]
+    assert int(s.get("d")) == round(9 / 16 * int(tmpl.get("timescale")))
+    count = int(s.get("r")) + 1
+    assert count == 6, "timeline must state exactly the segment count"
+
+    # Expand the template the way a player would and compare to the directory.
+    urls = [media_name(start + i) for i in range(count)]
     assert urls == [f"part{i:05d}.m4s" for i in range(6)]
-    for u in urls:
-        assert (tmp_path / u).exists()
     media_on_disk = sorted(p.name for p in tmp_path.glob("part*.m4s"))
     assert media_on_disk == urls
 
