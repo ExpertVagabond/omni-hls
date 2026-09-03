@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>omni-hls demo</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1a1a1a; --bg: #fafafa; --mute: #666; --line: #ddd; --ok: #1a7f37; --bad: #b42318; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e8e8e8; --bg: #111; --mute: #999; --line: #333; --ok: #3fb950; --bad: #f85149; } }
+  body { margin: 0; padding: 2rem 1rem 4rem; background: var(--bg); color: var(--fg); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; }
+  p.lead { color: var(--mute); margin: 0 0 1.5rem; }
+  video { width: 100%; max-width: 640px; aspect-ratio: 640 / 384; background: #000; border-radius: 6px; display: block; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: 1rem 0; font-variant-numeric: tabular-nums; }
+  dt { color: var(--mute); }
+  dd { margin: 0; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  pre { overflow-x: auto; padding: .75rem 1rem; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; line-height: 1.4; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { border-bottom: 1px solid var(--line); padding: .3rem .5rem; text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  .scroll { overflow-x: auto; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>omni-hls</h1>
+  <p class="lead">The LL-HLS playlist the benchmark wrote, played as-is. Bytes are the fMP4 fragments the packager received, copied, never transcoded.</p>
+
+  <video id="v" controls muted playsinline></video>
+
+  <dl>
+    <dt>engine</dt><dd id="engine">loading</dd>
+    <dt>playlist</dt><dd id="manifest">not loaded</dd>
+    <dt>parts</dt><dd id="parts">0</dd>
+    <dt>buffered</dt><dd id="buffered">0.00 s</dd>
+    <dt>position</dt><dd id="pos">0.00 s</dd>
+    <dt>errors</dt><dd id="errors" class="ok">none</dd>
+  </dl>
+
+  <h2>The playlist</h2>
+  <pre id="m3u8">fetching hls/stream.m3u8</pre>
+
+  <h2>Bench on the runner that built this page</h2>
+  <p class="lead">Ubuntu, GitHub Actions, produced by the same CI run that deployed this page. Full write-up and method in the <a href="https://github.com/ExpertVagabond/omni-hls">repository README</a>.</p>
+  <div id="bench"></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.6.7/hls.min.js"
+        integrity="sha384-rx4PlVDgFc9l++UMmNXDKltJFepbmAvkxzm6aozq6qvKO5zVtGexTR4aYSf/gtez"
+        crossorigin="anonymous"></script>
+<script>
+(function () {
+  var SRC = "hls/stream.m3u8";
+  var video = document.getElementById("v");
+  var $ = function (id) { return document.getElementById(id); };
+  var parts = 0;
+
+  function fail(msg) { var e = $("errors"); e.textContent = msg; e.className = "bad"; }
+
+  video.addEventListener("timeupdate", function () {
+    $("pos").textContent = video.currentTime.toFixed(2) + " s";
+    var b = video.buffered, end = 0;
+    for (var i = 0; i < b.length; i++) end = Math.max(end, b.end(i));
+    $("buffered").textContent = end.toFixed(2) + " s";
+  });
+  video.addEventListener("error", function () { fail("video element error " + (video.error && video.error.code)); });
+
+  if (window.Hls && Hls.isSupported()) {
+    $("engine").textContent = "hls.js " + Hls.version;
+    var hls = new Hls({ lowLatencyMode: true });
+    hls.on(Hls.Events.MANIFEST_PARSED, function (_, d) {
+      $("manifest").textContent = "parsed, " + d.levels.length + " level";
+    });
+    hls.on(Hls.Events.FRAG_BUFFERED, function (_, d) {
+      parts += 1; $("parts").textContent = parts + " buffered";
+    });
+    hls.on(Hls.Events.ERROR, function (_, d) { if (d.fatal) fail(d.type + ": " + d.details); });
+    hls.loadSource(SRC);
+    hls.attachMedia(video);
+  } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    $("engine").textContent = "native HLS";
+    video.src = SRC;
+    video.addEventListener("loadedmetadata", function () { $("manifest").textContent = "loaded natively"; });
+  } else {
+    $("engine").textContent = "no HLS support in this browser";
+  }
+
+  fetch(SRC).then(function (r) { return r.text(); }).then(function (t) { $("m3u8").textContent = t; })
+    .catch(function (e) { $("m3u8").textContent = "could not fetch playlist: " + e; });
+
+  function table(md) {
+    var rows = md.trim().split("\n").filter(function (l) { return l.indexOf("|") === 0 && !/^\|-+/.test(l); });
+    if (!rows.length) return null;
+    var t = document.createElement("table");
+    rows.forEach(function (line, i) {
+      var tr = document.createElement("tr");
+      line.split("|").slice(1, -1).forEach(function (c) {
+        var cell = document.createElement(i === 0 ? "th" : "td");
+        cell.textContent = c.trim(); tr.appendChild(cell);
+      });
+      t.appendChild(tr);
+    });
+    return t;
+  }
+  var benches = [["posted pace 1.161, 8192 B slices", "bench/bench-posted.md"],
+                 ["posted pace 1.161, 17 B slices", "bench/bench-17.md"],
+                 ["pace 1.0", "bench/bench-1.0.md"], ["pace 0.9", "bench/bench-0.9.md"]];
+  benches.forEach(function (b) {
+    fetch(b[1]).then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); }).then(function (md) {
+      var h = document.createElement("h3"); h.textContent = b[0];
+      var wrap = document.createElement("div"); wrap.className = "scroll";
+      var t = table(md); if (!t) return;
+      wrap.appendChild(t); $("bench").appendChild(h); $("bench").appendChild(wrap);
+    }).catch(function () {});
+  });
+})();
+</script>
+</body>
+</html>
