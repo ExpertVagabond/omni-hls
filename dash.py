@@ -8,10 +8,12 @@ and can be shared with it (``write_media=False``) when both packagers publish to
 one directory.
 
 The manifest is ``type="dynamic"`` while fragments are arriving and becomes
-``type="static"`` with a ``mediaPresentationDuration`` on ``finish()``. A
-``SegmentList`` with explicit ``SegmentURL`` entries is used rather than a
-``SegmentTemplate`` so the manifest advertises exactly the files that exist;
-that is the property the tests check.
+``type="static"`` with a ``mediaPresentationDuration`` on ``finish()``. It uses
+a ``SegmentTemplate`` with a ``$Number$`` pattern and an explicit
+``SegmentTimeline``, the one form that ffmpeg 6, current ffmpeg and dash.js all
+read the same way (see the comment in ``_write_manifest`` for the two forms
+that failed). The pattern expands to exactly the files ``llhls.py`` writes, and
+the tests expand it and check the directory against it.
 
 Codec, width and height are read from the init segment's ``avcC`` and sample
 entry so ``@codecs`` is correct without the caller knowing the encoder.
@@ -39,6 +41,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 from fmp4 import FragmentedMP4Splitter, iter_boxes  # noqa: E402
 
 CONTAINERS = {"moov", "trak", "mdia", "minf", "stbl"}
+
+# Expands to part00000.m4s, part00001.m4s, ... which is what llhls.py writes.
+MEDIA_TEMPLATE = "part$Number%05d$.m4s"
+
+
+def media_name(number: int) -> str:
+    """The file MEDIA_TEMPLATE expands to for segment ``number``."""
+    return f"part{number:05d}.m4s"
 
 
 def _children(buf: bytes, start: int, end: int):
@@ -167,18 +177,26 @@ class DASHPackager:
         if self._info.width and self._info.height:
             rep_attrs += [f'width="{self._info.width}"', f'height="{self._info.height}"']
 
+        # SegmentTemplate with $Number$ plus an explicit SegmentTimeline. Two
+        # other forms were tried and rejected against real consumers:
+        #   SegmentList + @duration: ffmpeg 6's dash demuxer derived the wrong
+        #     segment count and decoded 2 of 11 segments.
+        #   SegmentList + SegmentTimeline: dash.js 4.7 resolved every timeline
+        #     entry to the first SegmentURL and fetched part00000 eleven times.
+        # Template + timeline is the form both agree on. The media pattern
+        # expands to exactly the names llhls.py writes.
         lines = [
             '<?xml version="1.0" encoding="UTF-8"?>',
             f"<MPD {' '.join(mpd_attrs)}>",
             '  <Period id="0" start="PT0S">',
             '    <AdaptationSet mimeType="video/mp4" segmentAlignment="true" startWithSAP="1">',
             f"      <Representation {' '.join(rep_attrs)}>",
-            f'        <SegmentList timescale="{self.timescale}" duration="{seg_ticks}">',
-            '          <Initialization sourceURL="init.mp4"/>',
-        ]
-        lines += [f'          <SegmentURL media="{u}"/>' for u in self._uris]
-        lines += [
-            "        </SegmentList>",
+            f'        <SegmentTemplate timescale="{self.timescale}" initialization="init.mp4" '
+            f'media="{MEDIA_TEMPLATE}" startNumber="0">',
+            "          <SegmentTimeline>",
+            f'            <S t="0" d="{seg_ticks}" r="{len(self._uris) - 1}"/>',
+            "          </SegmentTimeline>",
+            "        </SegmentTemplate>",
             "      </Representation>",
             "    </AdaptationSet>",
             "  </Period>",
