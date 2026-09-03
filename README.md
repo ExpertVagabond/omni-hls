@@ -103,10 +103,11 @@ lives; "faster than playback" survives packaging on CPU cost alone.
 
 **2. The tail is the filesystem, not the code.** One run in five at the posted pace
 hit a 557 ms publish, another 305 ms. Both were APFS write stalls on a disk with
-6.5 GB free; the same run at 17-byte slices, moments later, peaked at 59 ms. Any
-packager that writes parts to disk inherits this tail, which is why production
-origins publish from memory or tmpfs. Measured, not assumed, and it changes the
-next point.
+6.5 GB free; the same run at 17-byte slices, moments later, peaked at 59 ms. The
+same five runs on a GitHub Ubuntu runner (run 33763828813) had a mean of 0.5 ms and a
+worst case of 1.1 ms, no tail at all. Any packager that writes parts to disk inherits
+whatever its disk does, which is why production origins publish from memory or
+tmpfs. Measured, not assumed, and it changes the next point.
 
 **3. The posted surplus is smaller than an LL-HLS hold-back.** At pace 1.161, a
 player that joins on the first part starts with 0.5625 s of lead, one part, and gains
