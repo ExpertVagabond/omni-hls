@@ -119,10 +119,12 @@ def test_share_mode_writes_no_media(tmp_path: Path):
 def test_media_bytes_match_llhls_packager(tmp_path: Path):
     """The point of sharing a directory: both packagers write identical files."""
     from llhls import LLHLSPackager
+    from test_hls_packaging import build_fragment, build_init
 
-    init, frags = init_segment(), fragments(4)
+    # LL-HLS reads each fragment's timing, so it needs real moof/trun/mdhd boxes.
+    init, frags = build_init(), [build_fragment(i) for i in range(4)]
     hls_dir, dash_dir = tmp_path / "hls", tmp_path / "dash"
-    hls = LLHLSPackager(out_dir=hls_dir, part_duration=0.5)
+    hls = LLHLSPackager(out_dir=hls_dir)
     dash = DASHPackager(out_dir=dash_dir, segment_duration=0.5)
     hls.start(init)
     dash.start(init)

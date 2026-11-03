@@ -73,12 +73,11 @@ def synthesise_source(path: Path, *, width: int, height: int, fps: int,
 
 
 def run(source: bytes, out_dir: Path, *, part_duration: float, pace: float,
-        slice_size: int, parts_per_segment: int) -> tuple[dict, list[PartRecord]]:
+        slice_size: int) -> tuple[dict, list[PartRecord]]:
     """Feed ``source`` through splitter and packager at ``pace`` x real time."""
     if out_dir.exists():
         shutil.rmtree(out_dir)
-    packager = LLHLSPackager(out_dir=out_dir, part_duration=part_duration,
-                             parts_per_segment=parts_per_segment)
+    packager = LLHLSPackager(out_dir=out_dir)
     splitter = FragmentedMP4Splitter()
     records: list[PartRecord] = []
 
@@ -236,7 +235,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fps", type=int, default=DEFAULT_FPS)
     ap.add_argument("--frames-per-chunk", type=int, default=DEFAULT_FRAMES_PER_CHUNK)
     ap.add_argument("--seconds", type=int, default=DEFAULT_MEDIA_SECONDS, help="synthesised source length")
-    ap.add_argument("--parts-per-segment", type=int, default=4)
     ap.add_argument("--runs", type=int, default=1, help="repeat the run to expose the tail (default 1)")
     ap.add_argument("--json", type=Path, help="write the report here as JSON (a list when --runs > 1)")
     ap.add_argument("--markdown", action="store_true", help="print a Markdown table row")
@@ -262,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     reports: list[dict] = []
     for _ in range(args.runs):
         report, _ = run(source, hls_dir, part_duration=part_duration, pace=args.pace,
-                        slice_size=args.slice, parts_per_segment=args.parts_per_segment)
+                        slice_size=args.slice)
         report["source"] = str(source_path)
         report["source_bytes"] = len(source)
         if not args.no_verify:
